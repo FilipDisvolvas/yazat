@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+
+YADNSAT_ROOT = File.expand_path(File.dirname(__FILE__)+"/..")
+
+require "#{YADNSAT_ROOT}/init"
+
+@options = {}
+optparser = OptionParser.new do |opts|
+  opts.banner = "Usage: yazat [options]"
+
+  opts.on("-c DIRECTORY", "--conf-dir=DIRECTORY", "Configuration directory (with templates and zones)") do |c|
+    @options[:config_dir] = c
+  end
+
+  opts.on("-o DIRECTORY", "--output-dir=DIRECTORY", "Output directory (where a the zone files are going to be written)") do |c|
+    @options[:output_dir] = c
+  end
+
+  opts.on("-e DIRECTORY", "--example-conf-dir=DIRECTORY", "Writes example configuration directory to this directory and exists") do |c|
+    output_dir = File.expand_path(c)
+    FileUtils.mkdir_p output_dir
+    FileUtils.cp_r "#{YADNSAT_ROOT}/examples/zones",     "#{output_dir}/", :verbose => true
+    FileUtils.cp_r "#{YADNSAT_ROOT}/examples/templates", "#{output_dir}/", :verbose => true
+    exit
+  end
+
+  opts.on("-h", "--help", "Show this help" ) do |c|
+    puts optparser
+    exit
+  end
+end
+
+optparser.parse!
+
+unless @options[:config_dir] && @options[:output_dir]
+  puts optparser
+  exit
+end
+
+
+zone_key_names = []
+
+defaults = YAML.load_file("#{@options[:config_dir]}/templates/defaults.yaml")["DEFAULTS"]
+defaults.deep_symbolize_keys!
+
+templates = ""
+
+Dir.glob("#{@options[:config_dir]}/templates/*.yaml").reject{|path| path.end_with?("/defaults.yaml")  }.each do |path|
+  templates << File.read(path) + "\n"
+end
+
+Dir.glob("#{@options[:config_dir]}/zones/*.yaml"){ |file|
+  zone_key_name = File.basename(file, ".yaml")
+  host_name = zone_key_name.gsub("_", ".")
+
+  definition = YAML.load(templates + File.read(file))
+  definition.deep_symbolize_keys!
+
+  output_file_path = "#{@options[:output_dir]}/#{definition[:name] || host_name}"
+
+  if File.exist?(output_file_path)
+    old_zone_file = Zonefile.from_file(output_file_path, definition[:name] || "#{host_name}.")
+    new_zone_file = old_zone_file.deep_clone
+  else
+    old_zone_file = Zonefile.new "", output_file_path, definition[:name] || "#{host_name}."
+    new_zone_file = Zonefile.new "", output_file_path, definition[:name] || "#{host_name}."
+  end
+
+
+  new_zone_file.records.reject{|type, values| type==:soa }.each_value(&:clear)
+
+  for record in definition[:records] + defaults[:records]
+    if (record_type = record.delete(:type).downcase) == "soa"
+      new_zone_file.send(record_type).merge! record
+    else
+      # reasonable default values...
+      record[:class] ||= "IN"
+      record[:ttl]   ||= "3600"
+
+      new_zone_file.send(record_type) << record
+    end
+  end
+
+  # New zone or zone changed? => Generate new serial number!
+  if !old_zone_file.soa[:serial] || new_zone_file.output != old_zone_file.output
+    new_zone_file.new_serial
+  end
+
+  # Write new zonefile
+  File.open(output_file_path, "w"){|f| f.puts new_zone_file.output } 
+}

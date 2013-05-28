@@ -1,0 +1,8 @@
+<<: *GOOGLE_MAIL
+records:
+- name: www
+  type: A
+  host: 127.0.0.1
+- name: www2
+  type: A
+  host: 127.0.0.2

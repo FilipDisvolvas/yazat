@@ -1,0 +1,12 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    ruby_deep_clone (0.3.0)
+    zonefile (1.04)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  ruby_deep_clone
+  zonefile

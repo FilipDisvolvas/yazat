@@ -1,0 +1,5 @@
+GOOGLE_MAIL: &GOOGLE_MAIL
+  records:
+  - name: "@"
+    type: "MX"
+    host: "mail.google.com."
